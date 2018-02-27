@@ -1,12 +1,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import json
+
+def getPressure(foldername):
+    parameters = getParameters(foldername)
+
+    data = np.load(os.path.join(foldername, "outGr.npz"))
+    R_list = data["R"]
+    gr_list = data["gr"]
+
+    p = 0
+    for R, gr in zip(R_list, gr_list):
+        # Calculate other quantities from g(r)
+        if 0 < R < parameters["rc"]:
+            r6i = np.power(1.0 / R, 6)
+            p += gr * 2 * np.pi * parameters["rho"] * parameters["rho"] * R * R * 48 * (r6i * r6i - 0.5 * r6i) * parameters["binwidth"] / 2
+
+    data = np.loadtxt(os.path.join(foldername, "outAverages.txt"))
+
+    T_mean = data[-1, 2]
+    p = p + parameters["rho"] * T_mean
+    return p
 
 def getParameters(foldername):
     with open(os.path.join(foldername, "parameters.txt"), "r") as fp:
         return json.loads(fp.read())
 
-def plotPositions(foldername, filename="outCoords_end.txt"):
+def plotPositions(foldername, filename="outCoords_end.npz"):
     def add_circle(x, y, radius, **kwargs):
         from matplotlib.patches import Ellipse
         try:
@@ -21,19 +42,21 @@ def plotPositions(foldername, filename="outCoords_end.txt"):
         for i in range(len(x)):
             add_circle(x[i], y[i], r[i], **kwargs)
     print(os.path.join(foldername, filename))
-    data = np.loadtxt(os.path.join(foldername, filename))
-    radii = np.loadtxt(os.path.join(foldername, "radii.txt"))*(2**(1./6.))
+    data = np.load(os.path.join(foldername, filename))
+    radii = data["radius"]*(2**(1./6.))
+    data = data["r"]
+    #radii = np.loadtxt(os.path.join(foldername, "radii.txt"))*(2**(1./6.))
     parameters = getParameters(foldername)
-    lx = parameters["lx"]
-    ly = parameters["ly"]
+    lx = parameters["box_size"][0]
+    ly = parameters["box_size"][0]
     print(lx, ly)
     #for i in len(data):
-    plotData(data[:, 1] % lx, data[:, 2] % ly, radii, color="b", alpha=0.5)
+    plotData(data[:, 0] % lx, data[:, 1] % ly, radii, color="b", alpha=0.5)
     for i in [-1, 0, 1]:
         for j in [-1, 0, 1]:
             if i == 0 and j == 0:
                 continue
-            plotData(data[:, 1] % lx + lx*i, data[:, 2] % ly + ly*j, radii, color="b", alpha=0.25)
+            plotData(data[:, 0] % lx + lx*i, data[:, 1] % ly + ly*j, radii, color="b", alpha=0.25)
             #plt.plot(data[:, 1] % lx + lx*i, data[:, 2] % ly + ly*j, 'bo', alpha=0.5)
     plt.axis("equal")
     plt.xlim(-lx*0.1, lx*1.1)
@@ -103,4 +126,4 @@ def getMSD(trajectories, parameters, magnitudes=6, skip=1):
         else:
             ds += msd
 
-    plt.loglog(times * dt, ds / N)
+    return times * dt, ds / N
